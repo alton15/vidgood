@@ -1,0 +1,87 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <UseWPF>true</UseWPF>
+
+    <AssemblyName>VideoPlayer</AssemblyName>
+    <Product>VidGood</Product>
+    <AssemblyTitle>VidGood</AssemblyTitle>
+    <Version>1.0.1</Version>
+    <ApplicationIcon>Assets\app.ico</ApplicationIcon>
+    <VlcVersion>3.0.24</VlcVersion>
+  </PropertyGroup>
+
+  <!-- Single-file, self-contained release build (see publish.ps1). -->
+  <PropertyGroup Condition="'$(Configuration)' == 'Release'">
+    <RuntimeIdentifier>win-x64</RuntimeIdentifier>
+    <SelfContained>true</SelfContained>
+    <PublishSingleFile>true</PublishSingleFile>
+    <!-- Only WPF's few native DLLs are extracted by the .NET host; managed code runs straight from the exe.
+         libVLC travels as an embedded zip that the app unpacks itself (VlcBootstrap), with a progress window. -->
+    <IncludeNativeLibrariesForSelfExtract>true</IncludeNativeLibrariesForSelfExtract>
+    <EnableCompressionInSingleFile>true</EnableCompressionInSingleFile>
+    <DebugType>none</DebugType>
+    <SatelliteResourceLanguages>ko;en</SatelliteResourceLanguages>
+    <!-- Don't publish the loose libvlc folder; it is embedded instead. -->
+    <VlcWindowsX64Enabled>false</VlcWindowsX64Enabled>
+  </PropertyGroup>
+
+  <!-- The app only ships for x64 Windows; don't copy the x86/ARM64 VLC builds (~190 MB). -->
+  <PropertyGroup>
+    <VlcWindowsX86Enabled>false</VlcWindowsX86Enabled>
+    <VlcWindowsArm64Enabled>false</VlcWindowsArm64Enabled>
+  </PropertyGroup>
+
+  <!-- VLC plugins a local-file player never loads: streaming output, muxers/recording,
+       network discovery, visualizations, video wall splitting and Lua scripts. -->
+  <ItemGroup>
+    <VlcWindowsX64ExcludeFiles Include="plugins\access_output\%2A;plugins\stream_out\%2A;plugins\mux\%2A;plugins\services_discovery\%2A;plugins\visualization\%2A;plugins\video_splitter\%2A;plugins\lua\%2A;lua\%2A%2A" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Using Include="System.IO" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Resource Include="Assets\app.ico" />
+    <AssemblyMetadata Include="VlcVersion" Value="$(VlcVersion)" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="LibVLCSharp.WPF" Version="3.10.2" />
+    <PackageReference Include="VideoLAN.LibVLC.Windows" Version="3.0.24" GeneratePathProperty="true" />
+  </ItemGroup>
+
+  <!-- Release: pack the (trimmed) x64 libVLC folder into a zip and embed it. -->
+  <Target Name="CollectLibVlc" Condition="'$(Configuration)' == 'Release'">
+    <PropertyGroup>
+      <_VlcRoot>$(PkgVideoLAN_LibVLC_Windows)\build\x64\</_VlcRoot>
+      <_VlcStage>$(IntermediateOutputPath)libvlc-stage\</_VlcStage>
+      <_VlcZip>$(IntermediateOutputPath)libvlc-win-x64.zip</_VlcZip>
+    </PropertyGroup>
+    <ItemGroup>
+      <!-- Same plugin set as VlcWindowsX64ExcludeFiles above (that list is escaped for the package's targets). -->
+      <!-- Runtime files only (no headers or import .lib), as in the package's default include list. -->
+      <_VlcFile Include="$(_VlcRoot)libvlc.dll;$(_VlcRoot)libvlccore.dll;$(_VlcRoot)hrtfs\**\*;$(_VlcRoot)plugins\**\*"
+                Exclude="$(_VlcRoot)plugins\access_output\**;$(_VlcRoot)plugins\stream_out\**;$(_VlcRoot)plugins\mux\**;$(_VlcRoot)plugins\services_discovery\**;$(_VlcRoot)plugins\visualization\**;$(_VlcRoot)plugins\video_splitter\**;$(_VlcRoot)plugins\lua\**;$(_VlcRoot)lua\**" />
+    </ItemGroup>
+  </Target>
+
+  <Target Name="ZipLibVlc" DependsOnTargets="CollectLibVlc" Condition="'$(Configuration)' == 'Release'"
+          Inputs="@(_VlcFile);$(MSBuildProjectFullPath)" Outputs="$(_VlcZip)">
+    <RemoveDir Directories="$(_VlcStage)" />
+    <Copy SourceFiles="@(_VlcFile)" DestinationFiles="@(_VlcFile->'$(_VlcStage)%(RecursiveDir)%(Filename)%(Extension)')" />
+    <ZipDirectory SourceDirectory="$(_VlcStage)" DestinationFile="$(_VlcZip)" Overwrite="true" />
+  </Target>
+
+  <Target Name="EmbedLibVlc" BeforeTargets="BeforeBuild" DependsOnTargets="ZipLibVlc" Condition="'$(Configuration)' == 'Release'">
+    <ItemGroup>
+      <EmbeddedResource Include="$(_VlcZip)" LogicalName="libvlc-win-x64.zip" />
+    </ItemGroup>
+  </Target>
+
+</Project>
