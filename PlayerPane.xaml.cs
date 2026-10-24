@@ -46,6 +46,7 @@ public partial class PlayerPane : UserControl, IDisposable
     bool _muted, _audioEnabled = true;
     RepeatMode _repeat = RepeatMode.None;
     long? _pendingStart;
+    long _openedAt; // where the current item was opened; Time reads 0 until the first frame is out
     bool _quietStart, _pauseAfterStart;
     bool _reopening, _reopenAgain;
     long? _seekTarget;
@@ -301,6 +302,7 @@ public partial class PlayerPane : UserControl, IDisposable
             _pendingStart = null;
         _quietStart = restart;
         _pauseAfterStart = startPaused;
+        _openedAt = _pendingStart ?? 0;
 
         using var media = new Media(App.EngineFor(_rotation), path, FromType.FromPath);
         if (AppSettings.Current.FastSeek) media.AddOption(":input-fast-seek");
@@ -348,7 +350,31 @@ public partial class PlayerPane : UserControl, IDisposable
             _player.SetPause(true);
         }
         UpdatePlayState();
+#if DEBUG
+        RunTestHook();
+#endif
     }
+
+#if DEBUG
+    static bool _testHookRan;
+
+    /// <summary>VP_TEST_ROTATE="count,intervalMs" rotates repeatedly once playback starts (no real input needed).</summary>
+    async void RunTestHook()
+    {
+        var spec = Environment.GetEnvironmentVariable("VP_TEST_ROTATE");
+        if (_testHookRan || string.IsNullOrEmpty(spec)) return;
+        _testHookRan = true;
+        var parts = spec.Split(',');
+        int count = int.Parse(parts[0]), interval = parts.Length > 1 ? int.Parse(parts[1]) : 100;
+        await Task.Delay(1500);
+        for (int i = 0; i < count; i++)
+        {
+            App.Diag($"test: rotate {i + 1}/{count}");
+            Rotate();
+            await Task.Delay(interval);
+        }
+    }
+#endif
 
     void OnEndReached()
     {
@@ -486,13 +512,18 @@ public partial class PlayerPane : UserControl, IDisposable
         _reopening = true;
         try
         {
+            // Captured once: a player that was only just started (e.g. by a previous reopen) still
+            // reports NothingSpecial and no time, so the pending start/pause requests are used instead.
+            var state = _player.State;
+            bool resume = HasMedia && state is not (VLCState.Stopped or VLCState.Ended or VLCState.Error);
+            bool paused = state == VLCState.Paused || _pauseAfterStart;
+            long current = _player.Time;
+            long time = _pendingStart ?? (current > 0 ? current : _openedAt);
+            App.Diag($"reopen: rotation={_rotation} state={state} time={time} resume={resume}");
+
             do
             {
                 _reopenAgain = false;
-                var state = _player.State;
-                bool resume = HasMedia && state is VLCState.Playing or VLCState.Paused or VLCState.Buffering or VLCState.Opening;
-                long time = Math.Max(0, _player.Time);
-
                 var old = _player;
                 _player = CreatePlayer(App.EngineFor(_rotation)); // events from the old player are ignored from here on
                 // A window handle takes one video output, so the old player must be fully stopped first.
@@ -506,10 +537,10 @@ public partial class PlayerPane : UserControl, IDisposable
                 VideoView.MediaPlayer = null; // re-attach so the current window handle is picked up
                 VideoView.MediaPlayer = _player;
                 _ = Task.Run(old.Dispose);
-
-                if (resume) PlayAt(_index, time, restart: true, startPaused: state == VLCState.Paused);
             }
-            while (_reopenAgain && !_disposed);
+            while (_reopenAgain && !_disposed); // rotated again meanwhile: swap engines before playing
+
+            if (resume && !_disposed) PlayAt(_index, time, restart: true, startPaused: paused);
         }
         finally
         {
