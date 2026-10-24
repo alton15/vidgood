@@ -10,7 +10,7 @@
     <AssemblyName>VideoPlayer</AssemblyName>
     <Product>VidGood</Product>
     <AssemblyTitle>VidGood</AssemblyTitle>
-    <Version>1.0.1</Version>
+    <Version>1.0.2</Version>
     <ApplicationIcon>Assets\app.ico</ApplicationIcon>
     <VlcVersion>3.0.24</VlcVersion>
   </PropertyGroup>
