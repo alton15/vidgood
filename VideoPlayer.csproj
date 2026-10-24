@@ -68,13 +68,17 @@
       <!-- Runtime files only (no headers or import .lib), as in the package's default include list. -->
       <_VlcFile Include="$(_VlcRoot)libvlc.dll;$(_VlcRoot)libvlccore.dll;$(_VlcRoot)hrtfs\**\*;$(_VlcRoot)plugins\**\*"
                 Exclude="$(_VlcRoot)plugins\access_output\**;$(_VlcRoot)plugins\stream_out\**;$(_VlcRoot)plugins\mux\**;$(_VlcRoot)plugins\services_discovery\**;$(_VlcRoot)plugins\visualization\**;$(_VlcRoot)plugins\video_splitter\**;$(_VlcRoot)plugins\lua\**;$(_VlcRoot)lua\**" />
+      <!-- %(RecursiveDir) is relative to each wildcard, which would drop the plugins\ and hrtfs\ prefixes. -->
+      <_VlcFile>
+        <PackagePath>$([MSBuild]::MakeRelative($(_VlcRoot), %(FullPath)))</PackagePath>
+      </_VlcFile>
     </ItemGroup>
   </Target>
 
   <Target Name="ZipLibVlc" DependsOnTargets="CollectLibVlc" Condition="'$(Configuration)' == 'Release'"
           Inputs="@(_VlcFile);$(MSBuildProjectFullPath)" Outputs="$(_VlcZip)">
     <RemoveDir Directories="$(_VlcStage)" />
-    <Copy SourceFiles="@(_VlcFile)" DestinationFiles="@(_VlcFile->'$(_VlcStage)%(RecursiveDir)%(Filename)%(Extension)')" />
+    <Copy SourceFiles="@(_VlcFile)" DestinationFiles="@(_VlcFile->'$(_VlcStage)%(PackagePath)')" />
     <ZipDirectory SourceDirectory="$(_VlcStage)" DestinationFile="$(_VlcZip)" Overwrite="true" />
   </Target>
 

@@ -83,7 +83,18 @@ public partial class App : Application
             Shutdown(1);
             return;
         }
-        LibVLC = new LibVLC("--no-video-title-show");
+        try
+        {
+            LibVLC = new LibVLC("--no-video-title-show");
+        }
+        catch (VLCException ex)
+        {
+            // Tell the user instead of exiting silently (e.g. a broken engine folder).
+            MessageBox.Show($"재생 엔진을 시작하지 못했습니다.\n\n{ex.Message}", "VidGood",
+                MessageBoxButton.OK, MessageBoxImage.Error);
+            Shutdown(1);
+            return;
+        }
         AttachDiagnosticLog(LibVLC);
 
         var window = OpenWindow();
